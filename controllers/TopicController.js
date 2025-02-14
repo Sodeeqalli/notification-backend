@@ -10,8 +10,10 @@ const createTopic = async (req, res) => {
 
   try {
     const topicExists = await Topic.findOne({ name });
+   
     if (topicExists) {
-      return res.status(400).json({ message: 'Topic with this name already exists.' });
+      return res.status(400).json({ message: 'Topic with the name or secretId already exists.' });
+
     }
 
     const topic = new Topic({
@@ -21,6 +23,7 @@ const createTopic = async (req, res) => {
       secretId: type === 'private' ? secretId : null,
       creator: req.user.id,
     });
+    console.log(secretId);
 
     await topic.save();
     res.status(201).json({ message: 'Topic created successfully', topic });
@@ -67,9 +70,10 @@ const searchTopics = async (req, res) => {
 // Search Private Topic by Secret ID
 const searchPrivateTopic = async (req, res) => {
   const { secretId } = req.body;
-
+console.log(secretId)
   try {
     const topic = await Topic.findOne({ type: 'private', secretId });
+    console.log(topic);
 
     if (!topic) {
       return res.status(404).json({ message: 'No private topic found with this secret ID.' });

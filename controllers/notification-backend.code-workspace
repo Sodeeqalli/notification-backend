@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../News-web"
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "News-web"
+	}
+}

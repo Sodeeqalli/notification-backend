@@ -12,7 +12,7 @@ const {
 router.post('/', authenticate, createTopic);
 
 // Search public topics
-router.get('/search', authenticate, searchTopics);
+router.post('/search', authenticate, searchTopics);
 
 // Search private topic by secret ID
 router.post('/private/search', authenticate, searchPrivateTopic);
