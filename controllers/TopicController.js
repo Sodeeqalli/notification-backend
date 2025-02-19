@@ -8,12 +8,15 @@ const createTopic = async (req, res) => {
     return res.status(400).json({ message: 'Name and type are required.' });
   }
 
+  if (type === 'private' && !secretId) {
+    return res.status(400).json({ message: 'Secret ID is required for private topics.' });
+  }
+
   try {
     const topicExists = await Topic.findOne({ name });
-   
-    if (topicExists) {
-      return res.status(400).json({ message: 'Topic with the name or secretId already exists.' });
 
+    if (topicExists) {
+      return res.status(400).json({ message: 'Topic with the name already exists.' });
     }
 
     const topic = new Topic({
@@ -23,7 +26,6 @@ const createTopic = async (req, res) => {
       secretId: type === 'private' ? secretId : null,
       creator: req.user.id,
     });
-    console.log(secretId);
 
     await topic.save();
     res.status(201).json({ message: 'Topic created successfully', topic });
@@ -32,35 +34,30 @@ const createTopic = async (req, res) => {
   }
 };
 
+
 const searchTopics = async (req, res) => {
   try {
-    const { name } = req.body; // Use req.body to get the input name
-
-    // Start with public topics as the base query
+    const { name } = req.body;
     const query = { type: 'public' };
 
-    // Add name filter if provided and valid
     if (name && typeof name === 'string' && name.trim() !== '') {
-      query.name = { $regex: `.*${name.trim()}.*`, $options: 'i' }; // Case-insensitive partial match
+      query.name = { $regex: `.*${name.trim()}.*`, $options: 'i' };
+    } else if (name) {
+      return res.status(400).json({ message: 'Invalid name format. Must be a string.' });
     }
 
-    console.log('Constructed Query:', query); // Debugging log
-
-    // Perform the database search
     const topics = await Topic.find(query);
 
-    // Handle cases where no topics match
     if (!topics.length) {
       return res.status(404).json({ message: 'No public topics found matching the search criteria.' });
     }
 
-    // Return matching topics
     res.status(200).json({ topics });
   } catch (error) {
-    console.error('Error during topic search:', error); // Debugging log
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 
 
@@ -70,10 +67,13 @@ const searchTopics = async (req, res) => {
 // Search Private Topic by Secret ID
 const searchPrivateTopic = async (req, res) => {
   const { secretId } = req.body;
-console.log(secretId)
+
+  if (!secretId || typeof secretId !== 'string') {
+    return res.status(400).json({ message: 'Valid secretId is required to search private topics.' });
+  }
+
   try {
     const topic = await Topic.findOne({ type: 'private', secretId });
-    console.log(topic);
 
     if (!topic) {
       return res.status(404).json({ message: 'No private topic found with this secret ID.' });
