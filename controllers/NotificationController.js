@@ -1,167 +1,209 @@
-const Notification = require('../models/Notification'); 
-const Topic = require('../models/Topic')
+const mongoose = require("mongoose");
+const Notification = require("../models/Notification");
+const Topic = require("../models/Topic");
 
 const sendNotification = async (req, res) => {
     try {
         if (!req.user || !req.user._id) {
-            return res.status(401).json({ message: 'Unauthorized: Missing user information' });
+            return res.status(401).json({ message: "Unauthorized: Missing user information" });
         }
 
         const sender = req.user._id;
-        console.log('Sender ID:', sender); // Confirm it's not undefined
-
         const { title, message, topicId } = req.body;
 
-        const topic = await Topic.findById(topicId).populate('creator').populate('members');
+        const topic = await Topic.findById(topicId).populate("creator").populate("members");
         if (!topic) {
-            return res.status(404).json({ message: 'Topic not found' });
+            return res.status(404).json({ message: "Topic not found" });
         }
-
-        console.log('Topic Creator ID:', topic.creator._id);
-        console.log('Is Sender Authorized:', topic.creator._id.equals(sender));
 
         if (!topic.creator._id.equals(sender)) {
-            return res.status(403).json({ message: 'You are not authorized to send notifications for this topic.' });
+            return res.status(403).json({ message: "You are not authorized to send notifications for this topic." });
         }
 
-        const recipients = topic.members.map(member => member._id);
+        const recipients = topic.members.map((member) => member._id);
         const notification = new Notification({ title, message, sender, topic: topicId, recipients });
         await notification.save();
 
-        res.status(201).json({ message: 'Notification sent successfully!', notification });
+        res.status(201).json({ message: "Notification sent successfully!", notification });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error sending notification:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
 
-
-
-
-
-
-// Fetch Notifications
+// Fetch all notifications
 const fetchNotifications = async (req, res) => {
     try {
-        const userId = req.user._id;
+        const userId = req.user._id.toString();
 
-        // Retrieve notifications for the user, excluding those marked as deleted by the user
         const notifications = await Notification.find({
             recipients: userId,
-            deletedBy: { $ne: userId },
-        });
+            deletedBy: { $ne: userId }, // Exclude deleted notifications
+        })
+        .sort({ createdAt: -1 }); // Sort by latest first
 
-        // Add a `isRead` field for each notification
-        const enrichedNotifications = notifications.map(notification => ({
-            ...notification._doc,
-            isRead: notification.readBy.includes(userId),
+        const enrichedNotifications = notifications.map((notification) => ({
+            ...notification.toObject(),
+            isRead: notification.readBy.map(id => id.toString()).includes(userId),
         }));
 
         res.status(200).json(enrichedNotifications);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error fetching notifications:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
 
 
-
-// Mark Notification as Read
-const markAsRead = async (req, res) => {
+// Fetch specific notification by ID
+const fetchNotificationById = async (req, res) => {
     try {
         const { notificationId } = req.params;
-        const userId = req.user._id;
+        const userId = req.user._id.toString();
+
+        if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+            return res.status(400).json({ message: "Invalid notification ID" });
+        }
 
         const notification = await Notification.findById(notificationId);
         if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+            return res.status(404).json({ message: "Notification not found" });
         }
 
-        if (!notification.readBy.includes(userId)) {
+        if (!notification.recipients.map(id => id.toString()).includes(userId)) {
+            return res.status(403).json({ message: "You are not authorized to view this notification" });
+        }
+
+        const response = {
+            ...notification.toObject(),
+            isRead: notification.readBy.map(id => id.toString()).includes(userId),
+        };
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error("Error fetching notification:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+};
+
+const fetchSentNotifications = async (req, res) => {
+    try {
+        const userId = req.user._id.toString();
+
+        const sentNotifications = await Notification.find({ sender: userId })
+            .sort({ createdAt: -1 }); // Latest first
+
+        res.status(200).json(sentNotifications);
+    } catch (error) {
+        console.error("Error fetching sent notifications:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+};
+
+
+// Mark notification as read
+const markAsRead = async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const userId = req.user._id.toString();
+
+        const notification = await Notification.findById(notificationId);
+        if (!notification) {
+            return res.status(404).json({ message: "Notification not found" });
+        }
+
+        if (!notification.readBy.map(id => id.toString()).includes(userId)) {
             notification.readBy.push(userId);
             await notification.save();
         }
 
-        res.status(200).json({ message: 'Notification marked as read!' });
+        res.status(200).json({ message: "Notification marked as read!" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error marking notification as read:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
 
-// Mark Notification as Unread
+// Mark notification as unread
 const markAsUnread = async (req, res) => {
     try {
         const { notificationId } = req.params;
-        const userId = req.user._id;
+        const userId = req.user._id.toString();
 
         const notification = await Notification.findById(notificationId);
         if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+            return res.status(404).json({ message: "Notification not found" });
         }
 
-        notification.readBy = notification.readBy.filter(id => id.toString() !== userId.toString());
+        notification.readBy = notification.readBy.filter((id) => id.toString() !== userId);
         await notification.save();
 
-        res.status(200).json({ message: 'Notification marked as unread!' });
+        res.status(200).json({ message: "Notification marked as unread!" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error marking notification as unread:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
 
-// Delete Notification
+// Delete notification
 const deleteNotification = async (req, res) => {
     try {
         const { notificationId } = req.params;
-        const userId = req.user._id;
+        const userId = req.user._id.toString();
+
+        if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+            return res.status(400).json({ message: "Invalid notification ID" });
+        }
 
         const notification = await Notification.findById(notificationId);
         if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+            return res.status(404).json({ message: "Notification not found" });
         }
 
-        if (notification.sender.toString() !== userId.toString() && !req.user.isAdmin) {
-            return res.status(403).json({ message: 'You do not have permission to delete this notification' });
+        if (notification.sender.toString() !== userId && !req.user.isAdmin) {
+            return res.status(403).json({ message: "You do not have permission to delete this notification" });
         }
 
         await notification.deleteOne();
-        res.status(200).json({ message: 'Notification deleted successfully!' });
+        res.status(200).json({ message: "Notification deleted successfully!" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error deleting notification:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
+
+// Remove notification from user's inbox
 const deleteNotificationFromInbox = async (req, res) => {
     try {
         const { notificationId } = req.params;
-        const userId = req.user._id;
+        const userId = req.user._id.toString();
 
         const notification = await Notification.findById(notificationId);
         if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+            return res.status(404).json({ message: "Notification not found" });
         }
 
-        // Check if the user is a recipient
-        if (!notification.recipients.includes(userId)) {
-            return res.status(400).json({ message: 'You are not a recipient of this notification' });
+        if (!notification.recipients.map(id => id.toString()).includes(userId)) {
+            return res.status(400).json({ message: "You are not a recipient of this notification" });
         }
 
-        // Remove the user from the recipients array
-        notification.recipients = notification.recipients.filter(
-            recipientId => recipientId.toString() !== userId.toString()
-        );
-
+        notification.recipients = notification.recipients.filter((recipientId) => recipientId.toString() !== userId);
         await notification.save();
 
-        res.status(200).json({ message: 'Notification removed from your inbox!' });
+        res.status(200).json({ message: "Notification removed from your inbox!" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error removing notification from inbox:", error);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
-
-
 
 module.exports = {
     sendNotification,
     fetchNotifications,
+    fetchNotificationById,
     markAsRead,
     markAsUnread,
     deleteNotification,
-    deleteNotificationFromInbox
+    deleteNotificationFromInbox,
+    fetchSentNotifications,
 };
