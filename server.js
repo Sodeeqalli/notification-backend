@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5001;
 app.use(
   cors({
     origin: 'http://127.0.0.1:5500', // Allow your frontend origin
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // Allowed HTTP methods
     allowedHeaders: ['Content-Type', 'Authorization'], // Allowed headers
   })
 );
